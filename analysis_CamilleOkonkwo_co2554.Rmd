@@ -1,0 +1,256 @@
+---
+title: "Data Science II Midterm Project Analysis"
+author: "Camille Okonkwo"
+output:
+  pdf_document:
+    latex_engine: xelatex
+    toc: yes
+    toc_depth: 2
+  html_document:
+    df_print: paged
+    toc: yes
+    toc_depth: '2'
+header-includes:
+- \usepackage{fancyhdr}
+- \usepackage{lipsum}
+- \pagestyle{fancy}
+- \fancyhead[R]{\thepage}
+- \fancypagestyle{plain}{\pagestyle{fancy}}
+editor_options: 
+  chunk_output_type: console
+--- 
+\newpage
+
+```{r setup, include=FALSE}
+library(tidyverse)
+
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+```{r, echo = T, message = FALSE, results='hide', warning=FALSE}
+library(tidymodels)
+library(splines)
+library(caret)
+```
+
+Partition the dataset into two parts: training data (80%) and test data (20%) with `tidymodels`. 
+```{r}
+load("data/recovery.RData")
+
+dat |> 
+  drop_na()
+
+set.seed(2)
+
+# create a random split of 80% training and 20% test data
+data_split <- initial_split(data = dat, prop = 0.8)
+
+# partitioned datasets
+training_data = training(data_split)
+testing_data = testing(data_split)
+
+# training data
+x <- model.matrix(recovery_time ~ ., training_data)[, -1] # matrix of predictors
+head(x)
+y <- training_data$recovery_time # vector of response
+
+# testing data
+x2 <- model.matrix(recovery_time ~ .,testing_data)[, -1] # matrix of predictors
+y2 <- testing_data$recovery_time # vector of response
+```
+\newpage
+
+# Exploratory analysis and data visualization
+```{r}
+
+```
+\newpage
+
+# Model Fitting
+
+## Ridge Regression
+```{r}
+# setting a 10-fold cross-validation
+ctrl <- trainControl(method = "cv", number = 10)
+
+# ridge using `caret`
+set.seed(2)
+
+ridge.fit <- train(x, y,
+                   method = "glmnet",
+                   tuneGrid = expand.grid(alpha = 0,
+                                          lambda = exp(seq(9, -6, length=100))),
+                   trControl = ctrl)
+
+plot(ridge.fit, xTrans = log)
+
+ridge.fit$bestTune
+
+# coefficients in the final model
+coef(ridge.fit$finalModel, s = ridge.fit$bestTune$lambda)
+
+
+ridge.pred <- predict(ridge.fit, newdata = model.matrix(recovery_time ~ ., testing_data)[,-1])
+
+# test error
+mean((ridge.pred - testing_data[, "recovery_time"])^2)
+```
+
+## Lasso
+```{r}
+set.seed(2)
+
+# lasso using caret
+lasso.fit <- train(x, y,
+                   method = "glmnet",
+                   tuneGrid = expand.grid(alpha = 1,
+                                          lambda = exp(seq(10, -5, length=100))),
+                   trControl = ctrl)
+
+plot(lasso.fit, xTrans = log)
+
+lasso.fit$bestTune
+
+# coefficients in the final model
+coef(lasso.fit$finalModel, lasso.fit$bestTune$lambda)
+```
+
+## Elastic Net
+```{r}
+set.seed(2)
+
+# elastic net using caret
+enet.fit <- train(x, y,
+                   method = "glmnet",
+                   tuneGrid = expand.grid(alpha = seq(0, 1, length = 20),
+                                          lambda = exp(seq(10, -5, length=100))),
+                   trControl = ctrl)
+
+enet.fit$bestTune
+
+myCol <- rainbow(25)
+myPar <- list(superpose.symbol = list(col = myCol),
+              superpose.line = list(col = myCol)) 
+
+plot(enet.fit, par.settings = myPar)
+
+# coefficients in the final model
+coef(enet.fit$finalModel, enet.fit$bestTune$lambda)
+```
+
+## PCR
+```{r}
+set.seed(2)
+
+# pcr using caret
+pcr.fit <- train(x, y,
+                 method = "pcr",
+                 tuneGrid = data.frame(ncomp = 1:13),
+                 trControl = ctrl,
+                 preProcess = c("center", "scale"))
+
+predy2.pcr2 <- predict(pcr.fit, newdata = x2) 
+
+mean((y2 - predy2.pcr2)^2)
+
+ggplot(pcr.fit, highlight = TRUE) + theme_bw()
+```
+
+## PLS
+```{r}
+set.seed(2)
+
+# pls using caret
+pls.fit <- train(x, y,
+                 method = "pls",
+                 tuneGrid = data.frame(ncomp = 1:13),
+                 trControl = ctrl,
+                 preProcess = c("center", "scale"))
+
+predy2.pls2 <- predict(pls.fit, newdata = x2) 
+
+mean((y2 - predy2.pls2)^2)
+
+ggplot(pls.fit, highlight = TRUE) + theme_bw()
+```
+
+## GAM
+```{r}
+set.seed(2)
+
+gam.fit <- train(x, y,
+                  method = "gam",
+                  tuneGrid = data.frame(method = "GCV.Cp",
+                                        select = c(TRUE, FALSE)),
+                  trControl = ctrl)
+
+gam.fit$bestTune
+
+gam.fit$finalModel
+plot(gam.fit$finalModel)
+
+```
+
+## MARS
+```{r}
+# set grid
+mars_grid <- expand.grid(degree = 1:4, nprune = 1:20)
+
+set.seed(2)
+
+# fit a MARS model
+mars.fit <- train(x, y,
+                  method = "earth",
+                  tuneGrid = mars_grid,
+                  trControl = ctrl)
+# plot
+ggplot(mars.fit)
+
+# best tuning parameters
+mars.fit$bestTune
+
+# regression function
+mars.fit$finalModel
+
+# report the regression function
+summary(mars.fit)
+coef(mars.fit$finalModel)
+
+# partial dependence plot on a predictors of interest, study
+p1 <- pdp::partial(mars.fit, pred.var = c("weight"), grid.resolution = 10) |>
+  autoplot()
+
+p1
+
+# test error
+pred.mars <- predict(mars.fit, newdata = testing_data)
+
+test.error.mars <- mean((pred.mars - y2)^2)
+```
+
+## Linear Model
+```{r}
+set.seed(2)
+
+# fit a linear model
+lm.fit <- train(x, y, 
+                method = "lm",
+                trControl = ctrl)
+
+summary(lm.fit)
+```
+
+
+# Model Comparison
+```{r}
+# compare models
+resamp <- resamples(list(ridge = ridge.fit, lasso = lasso.fit, enet = enet.fit, pcr = pcr.fit, pls = pls.fit, gam = gam.fit, mars = mars.fit, lm = lm.fit))
+
+summary(resamp)
+
+parallelplot(resamp, metric = "RMSE")
+
+bwplot(resamp, metric = "RMSE")
+```
+
+MARS has lowest mean and median RMSE -> model I pick
