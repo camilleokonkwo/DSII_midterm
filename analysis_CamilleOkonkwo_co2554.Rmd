@@ -31,6 +31,8 @@ knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
 library(tidymodels)
 library(splines)
 library(caret)
+library(table1)
+library(kableExtra)
 ```
 
 Partition the dataset into two parts: training data (80%) and test data (20%) with `tidymodels`. 
@@ -62,9 +64,43 @@ y2 <- testing_data$recovery_time # vector of response
 
 # Exploratory analysis and data visualization
 ```{r}
+dat_ds <- dat |> 
+  mutate(across(.fns = as.factor)) |>
+  rename_with(~str_to_title(.x), everything()) |> 
+  mutate(
+    Age = as.numeric(Age),
+    Gender = factor(Gender, levels = c(0, 1), labels = c("Female", "Male")),
+    `Race/Ethnicity` = factor(Race, levels = c(1, 2, 3, 4), labels = c("White", "Asian", "Black", "Hispanic")),
+    `Smoking status` = factor(Smoking, levels = c(0, 1, 2), labels = c("Never smoked", "Former smoker", "Current smoker")),
+    Height = as.numeric(Height),
+    Weight = as.numeric(Weight),
+    `Body Mass Index (BMI)` = as.numeric(Bmi),
+    Hypertension = factor(Hypertension, levels = c(0, 1), labels = c("No", "Yes")),
+    Diabetes = factor(Diabetes, levels = c(0, 1), labels = c("No", "Yes")),
+    `Systolic Blood Pressure (SBP)` = as.numeric(Sbp),
+    `Low-density lipoprotein cholesterol (LDL)` = as.numeric(Ldl),
+    `Vaccination status at the time of infection (vaccine)` = factor(Vaccine, levels = c(0, 1), labels = c("Not vaccinated", "Vaccinated")),
+    `Severity of COVID-19 infection (severity)` = factor(Severity, levels = c(0, 1), labels = c("Not severe", "Severe")),
+    `Time from COVID-19 infection to recovery (recovery_time)` = as.numeric(Recovery_time),
+    Study = factor(Study, levels = c("A", "B"), labels = c("Study A", "Study B"))
+    )
 
+units(dat_ds$Height) <- "cm"
+units(dat_ds$Weight) <- "kg"
+units(dat_ds$`Body Mass Index (BMI)`) <- "kg/m^2"
+units(dat_ds$`Systolic Blood Pressure (SBP)`) <- "mm/Hg"
+units(dat_ds$`Low-density lipoprotein cholesterol (LDL)`) <- "mg/dL"
+units(dat_ds$`Time from COVID-19 infection to recovery (recovery_time)`) <- "days"
+
+# descriptive statistics
+descriptive_table <- table1(~ Age + Gender + `Race/Ethnicity` + `Smoking status` + Height + Weight + `Body Mass Index (BMI)` + Hypertension + Diabetes + `Systolic Blood Pressure (SBP)` + `Low-density lipoprotein cholesterol (LDL)` + `Vaccination status at the time of infection (vaccine)` + `Severity of COVID-19 infection (severity)` + `Time from COVID-19 infection to recovery (recovery_time)` | Study,
+                            data = dat_ds,
+                            overall = "Total",
+                            caption = "Descriptive Statistics")
+t1kable(descriptive_table)
 ```
 \newpage
+
 
 # Model Fitting
 
