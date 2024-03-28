@@ -34,6 +34,9 @@ library(caret)
 library(glmnet)
 library(table1)
 library(kableExtra)
+library(summarytools)
+library(corrplot)
+library(cowplot)
 ```
 \newpage
 
@@ -63,9 +66,10 @@ Here is a description of each variable:
 * Study (`study`): The study (A/B) that the participant belongs to
 * Time to recovery (`recovery_time`): Time from COVID-19 infection to recovery in days
 
-# Data Preparation
+## Data Preparation
 
-Partition the dataset into two parts: training data (80%) and test data (20%) with `tidymodels`. 
+Partition the dataset into two parts: a matrix of predictors and a vector of response. 
+
 ```{r data_partition, echo = T, message = FALSE, results = 'hide', warning=FALSE}
 load("data/recovery.RData")
 
@@ -93,7 +97,8 @@ dat_ds <- dat |>
                               labels = c("White", "Asian", "Black", "Hispanic")),
     `Smoking status` = factor(Smoking,
                               levels = c(0, 1, 2),
-                              labels = c("Never smoked", "Former smoker", "Current smoker")),
+                              labels = c("Never smoked", "Former smoker",
+                                         "Current smoker")),
     Height = as.numeric(Height),
     Weight = as.numeric(Weight),
     `Body Mass Index` = as.numeric(Bmi),
@@ -107,7 +112,8 @@ dat_ds <- dat |>
     `Low-density lipoprotein cholesterol` = as.numeric(Ldl),
     `Vaccination status at the time of infection` = factor(Vaccine,
                                                            levels = c(0, 1),
-                                                           labels = c("Not vaccinated", "Vaccinated")),
+                                                           labels = c("Not vaccinated",
+                                                                      "Vaccinated")),
     `Severity of COVID-19 infection` = factor(Severity,
                                               levels = c(0, 1),
                                               labels = c("Not severe", "Severe")),
@@ -120,8 +126,6 @@ dat_ds <- dat |>
 
 ## Descriptive Statistics Table
 ```{r}
-library(summarytools)
-
 st_options(plain.ascii = FALSE,
            style = "rmarkdown",
            dfSummary.silent = TRUE,
@@ -129,9 +133,6 @@ st_options(plain.ascii = FALSE,
            subtitle.emphasis = FALSE)
 
 dfSummary(dat)
-
-library(table1)
-library(kableExtra)
 
 units(dat_ds$Height) <- "cm"
 units(dat_ds$Weight) <- "kg"
@@ -145,13 +146,84 @@ descriptive_table <- table1(~ Age + Gender + `Race/Ethnicity` + `Smoking status`
                             overall = "Total",
                             caption = "Descriptive Statistics")
 
-t1kable(descriptive_table)
+ds = t1kable(descriptive_table)
+ds
 ```
 
 There are no missing values in the dataset. The distribution of the demographic variables `age`, `gender`, `race` are about the same between treatment groups. Mean `height`, `weight`, `BMI`, `SBP` and `LDL` variables are also similarly distributed between groups. There are more people who are vaccinated than not vaccinated in study group A and B, and also there are more participants who are reported to have not severe COVID-19 infections. `recovery_time` mean and SD is higher for Study B. There is also a larger interval range.
 
+## Response Variable Exploration
+```{r}
+# Calculate mean and standard deviation
+mean_value = mean(dat$recovery_time)
+sd_value = sd(dat$recovery_time)
+
+# Define upper and lower bounds
+outlier_coeff = 2
+outlier_high = mean_value + outlier_coeff * sd_value
+outlier_low = mean_value - outlier_coeff * sd_value
+
+recovery_outlier = 
+  dat |> 
+  filter(recovery_time >= outlier_low & recovery_time <= outlier_high)
+
+# recovery_time boxplot
+boxplot_recovery =
+  dat |> 
+  ggplot(aes(x = recovery_time, y = study)) +
+  geom_violin(fill = "skyblue", alpha = 0.3, color= NA) +
+  geom_boxplot(fill = NA, color = "blue",
+               width = 0.3, coef = outlier_coeff/2) +
+  geom_vline(xintercept = c(outlier_low, outlier_high),
+             color = "red",linetype = "dashed", size = .5) +
+  labs(title = "Distribution of Recovery Time Study Group",
+       x = "Study Group", y = "Recovery Time") +
+  theme_minimal() +
+  scale_x_continuous(
+    breaks = seq(0, 400, by = 20),  
+    labels = seq(0, 400, by = 20)   
+  )
+
+print(boxplot_recovery)
+
+# recovery_time histogram
+histogram_recovery =
+  dat |> 
+  ggplot(aes(x = recovery_time)) +
+  geom_histogram(bins = 150, fill = "skyblue", color = "skyblue") +
+  geom_vline(xintercept = c(outlier_low, outlier_high),
+             color = "red", linetype = "dashed", size = .5) +
+  labs(title = "Distribution of Days to Recovery post COVID-19 Infection with Outliers Highlighted",
+       x = "Recovery Time", y = "Frequency") +
+  theme_minimal() +
+  scale_x_continuous(
+    breaks = seq(0, 400, by = 20),  
+    labels = seq(0, 400, by = 20)   
+  )
+
+print(histogram_recovery)
+
+combined_recovery =
+  plot_grid(histogram_recovery, boxplot_recovery, labels = c("Histogram", "Boxplot"), ncol = 1)
+
+# Show the combined plot
+print(combined_recovery)
+```
+
+Using a cut-off based on the standard deviation ± 2 times the mean, there are a total 92 outliers (approximately 3% of the observations). These outliers will be excluded from future analysis. Specifically, among the outliers, 84 belong to the study group B population.
+
+```{r}
+# removing recovery_time outliers
+dat2 = 
+  dat |> 
+  filter(recovery_time >= outlier_low & recovery_time <= outlier_high)
+
+x.dat2 = model.matrix(recovery_time ~., dat2)[, -1]
+y.dat2 = dat2$recovery_time
+```
+
 ## Feature Plot
-```{r fig.height=3}
+```{r fig.height=4}
 theme1 <- trellis.par.get()
 theme1$plot.symbol$col <- rgb(.2, .4, .2, .5)
 theme1$plot.symbol$pch <- 16
@@ -160,39 +232,33 @@ theme1$plot.line$lwd <- 2
 theme1$strip.background$col <- rgb(.0, .2, .6, .2)
 trellis.par.set(theme1)
 
+
 featurePlot(
-  x.dat[, -c(2, 3, 4, 5, 6, 7, 11, 12, 15, 16, 17) ],
-  y.dat,
+  x.dat2[, -c(2, 3, 4, 5, 6, 7, 11, 12, 15, 16, 17) ],
+  y.dat2,
   plot = "scatter",
   labels = c("", "Y"),
   type = c("p", "smooth"),
   layout = c(3, 3))
 ```
 
-Seems to be mostly linear, with some outliers. I will try and remove some to get a more optimal fit. 
+From the feature plot of the continuous variables, there appears to be no strong linear correlations with our response variable `recovery_time`. `bmi` and `weight` however show a potential non-linear relationship. A GAM or MARS model may be best (Do we want to do a transformation?)
 
-## Correlation Matrix of training data
+## Correlation Matrix
 ```{r}
-library(corrplot)
-corrplot(cor(x.dat), method = "circle", type = "full")
+corrplot(cor(x.dat2), method = "circle", type = "full")
+
+#checking to see if predictors correlate
+corrplot(cor(x.dat2[, -c(2,3,4,5,6,7,11,12,15,16,17)]), type = "full", diag= FALSE)
 ```
 
-There may be multicollinearity between some predictors, so when fitting models I may consider a GAM or MARS.  
+The correlation matrix between predictors indicates multicollinearity between `bmi` and `weight`, `sbp` and `hypertension`, and potentially `bmi` and `height`.
 
-```{r}
-outlier_coeff = 2
+\newpage
 
-# Calculate upper and lower bounds for outliers
-outlier_high = mean(dat$recovery_time) + outlier_coeff/2 * sd(dat$recovery_time)
-outlier_low = mean(dat$recovery_time) - outlier_coeff/2 * sd(dat$recovery_time)
+# Model Training in `caret`
 
-# Remove outliers based on the calculated bounds
-dat2 = dat %>%
-  filter(recovery_time <= outlier_high & recovery_time >= outlier_low)
-
-```
-
-# Test and Train Data Preparation
+## Test and Train Data Preparation
 ```{r}
 set.seed(2)
 
@@ -211,14 +277,7 @@ y <- training_data$recovery_time # vector of response
 # testing data
 x2 <- model.matrix(recovery_time ~ .,testing_data)[, -1] # matrix of predictors
 y2 <- testing_data$recovery_time # vector of response
-```
 
-
-\newpage
-
-# Model Fitting in `caret`
-
-```{r}
 # setting a 10-fold cross-validation
 ctrl <- trainControl(method = "cv", 
                      number = 10,
@@ -245,7 +304,7 @@ set.seed(2)
 knn.fit <- train(x, y,
                  method = "knn",
                  trControl = ctrl,
-                 tuneGrid = expand.grid(k = seq(from = 1, to = 20, by = 1)))
+                 tuneGrid = expand.grid(k = seq(from = 1, to = 18, by = 1)))
 
 ggplot(knn.fit, highlight = TRUE) + theme_bw()
 ```
@@ -283,7 +342,7 @@ set.seed(2)
 lasso.fit <- train(x, y,
                    method = "glmnet",
                    tuneGrid = expand.grid(alpha = 1,
-                                          lambda = exp(seq(-1, -5, length=200))),
+                                          lambda = exp(seq(-2, -6, length=200))),
                    trControl = ctrl)
 
 plot(lasso.fit, xTrans = log)
@@ -302,8 +361,8 @@ set.seed(2)
 enet.fit <- train(x, y,
                    method = "glmnet",
                    tuneGrid = expand.grid(alpha = seq(0, 1, length =
-                                                        21),
-                                          lambda = exp(seq(1, -5, length=200))),
+                                                        25),
+                                          lambda = exp(seq(0, -6, length=200))),
                    trControl = ctrl)
 
 enet.fit$bestTune
@@ -366,6 +425,8 @@ gam.fit <- train(x, y,
 gam.fit$bestTune
 
 gam.fit$finalModel
+
+coef(gam.fit$finalModel)
 plot(gam.fit$finalModel)
 ```
 
@@ -400,7 +461,6 @@ pred.mars <- predict(mars.fit, newdata = testing_data)
 test.error.mars <- mean((pred.mars - y2)^2)
 ```
 
-
 # Model Comparison
 ```{r}
 # compare models
@@ -414,3 +474,9 @@ bwplot(resamp, metric = "RMSE")
 ```
 
 MARS has lowest mean and median RMSE -> model I pick
+
+# Test Data
+```{r}
+
+```
+
