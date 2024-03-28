@@ -83,7 +83,7 @@ y.dat = dat$recovery_time
 \newpage
 
 # Exploratory analysis and data visualization
-```{r}
+```{r echo = FALSE, message = FALSE, warning = FALSE}
 dat_ds <- dat |> 
   mutate(across(.fns = as.factor)) |>
   rename_with(~str_to_title(.x), everything()) |> 
@@ -199,8 +199,6 @@ histogram_recovery =
     labels = seq(0, 400, by = 20)   
   )
 
-print(histogram_recovery)
-
 combined_recovery =
   plot_grid(histogram_recovery, boxplot_recovery, ncol = 1)
 
@@ -230,7 +228,6 @@ theme1$plot.line$lwd <- 2
 theme1$strip.background$col <- rgb(.0, .2, .6, .2)
 trellis.par.set(theme1)
 
-
 featurePlot(
   x.dat2[, -c(2, 3, 4, 5, 6, 7, 11, 12, 15, 16, 17) ],
   y.dat2,
@@ -240,14 +237,11 @@ featurePlot(
   layout = c(3, 3))
 ```
 
-From the feature plot of the continuous variables, there appears to be no strong linear correlations with our response variable `recovery_time`. `bmi` and `weight` however show a potential non-linear relationship. A GAM or MARS model may be best (Do we want to do a transformation?)
+From the feature plot of the continuous variables, there appears to be no strong linear correlations with our response variable `recovery_time`. `bmi` and `weight` however show a potential non-linear relationship. A GAM or MARS model may be best (**Do we want to do a transformation?**)
 
 ## Correlation Matrix
 ```{r}
 corrplot(cor(x.dat2), method = "circle", type = "full")
-
-#checking to see if predictors correlate
-corrplot(cor(x.dat2[, -c(2,3,4,5,6,7,11,12,15,16,17)]), type = "full", diag= FALSE)
 ```
 
 The correlation matrix between predictors indicates multicollinearity between `bmi` and `weight`, `sbp` and `hypertension`, and potentially `bmi` and `height`.
@@ -471,9 +465,9 @@ parallelplot(resamp, metric = "RMSE")
 bwplot(resamp, metric = "RMSE")
 ```
 
-GAM has lowest mean and median RMSE -> model I pick
+GAM has lowest mean and median RMSE -> model I pick. GAM is a good choice since it incorporates non-linear terms by adding the smoothing function, as well as linear terms. GAM also performs model selection for us. 
 
-# Test Data
+# Test Data Simulation
 ```{r}
 
 ```
