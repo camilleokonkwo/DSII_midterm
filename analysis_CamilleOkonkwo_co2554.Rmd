@@ -43,7 +43,7 @@ To gain a better understanding of the factors that predict recovery time from CO
 
 # Data
 
-The dataset in "recovery.RData" includes data from 3000 participants.  
+The dataset in `recovery.RData` includes data from 3000 participants.  
 
 Here is a description of each variable:
 
@@ -70,26 +70,11 @@ Partition the dataset into two parts: training data (80%) and test data (20%) wi
 load("data/recovery.RData")
 
 dat = dat |> 
-  drop_na() |> 
   select(-id)
 
-set.seed(2)
-
-# create a random split of 80% training and 20% test data
-data_split <- initial_split(data = dat, prop = 0.8)
-
-# partitioned datasets
-training_data = training(data_split)
-testing_data = testing(data_split)
-
-# training data
-x <- model.matrix(recovery_time ~ ., training_data)[, -1] # matrix of predictors
-head(x)
-y <- training_data$recovery_time # vector of response
-
-# testing data
-x2 <- model.matrix(recovery_time ~ .,testing_data)[, -1] # matrix of predictors
-y2 <- testing_data$recovery_time # vector of response
+# matrix of predictors & vector of response for data set exploration
+x.dat = model.matrix(recovery_time ~., dat)[, -1]
+y.dat = dat$recovery_time
 ```
 \newpage
 
@@ -100,20 +85,36 @@ dat_ds <- dat |>
   rename_with(~str_to_title(.x), everything()) |> 
   mutate(
     Age = as.numeric(Age),
-    Gender = factor(Gender, levels = c(0, 1), labels = c("Female", "Male")),
-    `Race/Ethnicity` = factor(Race, levels = c(1, 2, 3, 4), labels = c("White", "Asian", "Black", "Hispanic")),
-    `Smoking status` = factor(Smoking, levels = c(0, 1, 2), labels = c("Never smoked", "Former smoker", "Current smoker")),
+    Gender = factor(Gender,
+                    levels = c(0, 1),
+                    labels = c("Female", "Male")),
+    `Race/Ethnicity` = factor(Race,
+                              levels = c(1, 2, 3, 4),
+                              labels = c("White", "Asian", "Black", "Hispanic")),
+    `Smoking status` = factor(Smoking,
+                              levels = c(0, 1, 2),
+                              labels = c("Never smoked", "Former smoker", "Current smoker")),
     Height = as.numeric(Height),
     Weight = as.numeric(Weight),
     `Body Mass Index` = as.numeric(Bmi),
-    Hypertension = factor(Hypertension, levels = c(0, 1), labels = c("No", "Yes")),
-    Diabetes = factor(Diabetes, levels = c(0, 1), labels = c("No", "Yes")),
+    Hypertension = factor(Hypertension,
+                          levels = c(0, 1),
+                          labels = c("No", "Yes")),
+    Diabetes = factor(Diabetes,
+                      levels = c(0, 1),
+                      labels = c("No", "Yes")),
     `Systolic Blood Pressure` = as.numeric(Sbp),
     `Low-density lipoprotein cholesterol` = as.numeric(Ldl),
-    `Vaccination status at the time of infection` = factor(Vaccine, levels = c(0, 1), labels = c("Not vaccinated", "Vaccinated")),
-    `Severity of COVID-19 infection` = factor(Severity, levels = c(0, 1), labels = c("Not severe", "Severe")),
+    `Vaccination status at the time of infection` = factor(Vaccine,
+                                                           levels = c(0, 1),
+                                                           labels = c("Not vaccinated", "Vaccinated")),
+    `Severity of COVID-19 infection` = factor(Severity,
+                                              levels = c(0, 1),
+                                              labels = c("Not severe", "Severe")),
     `Time from COVID-19 infection to recovery` = as.numeric(Recovery_time),
-    Study = factor(Study, levels = c("A", "B"), labels = c("Study A", "Study B"))
+    Study = factor(Study,
+                   levels = c("A", "B"),
+                   labels = c("Study A", "Study B"))
     )
 ```
 
@@ -147,14 +148,10 @@ descriptive_table <- table1(~ Age + Gender + `Race/Ethnicity` + `Smoking status`
 t1kable(descriptive_table)
 ```
 
-## Correlation matrix of training data
-```{r}
-library(corrplot)
-corrplot(cor(x), method = "circle", type = "full")
-```
+There are no missing values in the dataset. The distribution of the demographic variables `age`, `gender`, `race` are about the same between treatment groups. Mean `height`, `weight`, `BMI`, `SBP` and `LDL` variables are also similarly distributed between groups. There are more people who are vaccinated than not vaccinated in study group A and B, and also there are more participants who are reported to have not severe COVID-19 infections. `recovery_time` mean and SD is higher for Study B. There is also a larger interval range.
 
-## Feature Plot of continuous variables
-```{r fig.height=4}
+## Feature Plot
+```{r fig.height=3}
 theme1 <- trellis.par.get()
 theme1$plot.symbol$col <- rgb(.2, .4, .2, .5)
 theme1$plot.symbol$pch <- 16
@@ -164,14 +161,58 @@ theme1$strip.background$col <- rgb(.0, .2, .6, .2)
 trellis.par.set(theme1)
 
 featurePlot(
-  x[, -c(2, 3, 4, 5, 6, 7, 11, 12, 15, 16, 17) ],
-  y,
+  x.dat[, -c(2, 3, 4, 5, 6, 7, 11, 12, 15, 16, 17) ],
+  y.dat,
   plot = "scatter",
   labels = c("", "Y"),
-  type = c("p"),
+  type = c("p", "smooth"),
   layout = c(3, 3))
 ```
-Seems to be mostly linear, with some outliers.
+
+Seems to be mostly linear, with some outliers. I will try and remove some to get a more optimal fit. 
+
+## Correlation Matrix of training data
+```{r}
+library(corrplot)
+corrplot(cor(x.dat), method = "circle", type = "full")
+```
+
+There may be multicollinearity between some predictors, so when fitting models I may consider a GAM or MARS.  
+
+```{r}
+outlier_coeff = 2
+
+# Calculate upper and lower bounds for outliers
+outlier_high = mean(dat$recovery_time) + outlier_coeff/2 * sd(dat$recovery_time)
+outlier_low = mean(dat$recovery_time) - outlier_coeff/2 * sd(dat$recovery_time)
+
+# Remove outliers based on the calculated bounds
+dat2 = dat %>%
+  filter(recovery_time <= outlier_high & recovery_time >= outlier_low)
+
+```
+
+# Test and Train Data Preparation
+```{r}
+set.seed(2)
+
+# create a random split of 80% training and 20% test data
+data_split <- initial_split(data = dat2, prop = 0.8)
+
+# partitioned datasets
+training_data = training(data_split)
+testing_data = testing(data_split)
+
+# training data
+x <- model.matrix(recovery_time ~ ., training_data)[, -1] # matrix of predictors
+head(x)
+y <- training_data$recovery_time # vector of response
+
+# testing data
+x2 <- model.matrix(recovery_time ~ .,testing_data)[, -1] # matrix of predictors
+y2 <- testing_data$recovery_time # vector of response
+```
+
 
 \newpage
 
@@ -182,6 +223,18 @@ Seems to be mostly linear, with some outliers.
 ctrl <- trainControl(method = "cv", 
                      number = 10,
                      selectionFunction = "best")
+```
+
+## Linear Model
+```{r}
+set.seed(2)
+
+# fit a linear model
+lm.fit <- train(x, y, 
+                method = "lm",
+                trControl = ctrl)
+
+summary(lm.fit)
 ```
 
 ## KNN
@@ -205,7 +258,7 @@ set.seed(2)
 ridge.fit <- train(x, y,
                    method = "glmnet",
                    tuneGrid = expand.grid(alpha = 0,
-                                          lambda = exp(seq(5, -10, length=200))),
+                                          lambda = exp(seq(1, -3, length=200))),
                    trControl = ctrl)
 
 plot(ridge.fit, xTrans = log)
@@ -230,7 +283,7 @@ set.seed(2)
 lasso.fit <- train(x, y,
                    method = "glmnet",
                    tuneGrid = expand.grid(alpha = 1,
-                                          lambda = exp(seq(2, -12, length=200))),
+                                          lambda = exp(seq(-1, -5, length=200))),
                    trControl = ctrl)
 
 plot(lasso.fit, xTrans = log)
@@ -241,15 +294,16 @@ lasso.fit$bestTune
 coef(lasso.fit$finalModel, lasso.fit$bestTune$lambda)
 ```
 
-## Elastic Net (???)
+## Elastic Net
 ```{r}
 set.seed(2)
 
 # elastic net using caret
 enet.fit <- train(x, y,
                    method = "glmnet",
-                   tuneGrid = expand.grid(alpha = seq(0, 1, length = 21),
-                                          lambda = exp(seq(2, -10, length=200))),
+                   tuneGrid = expand.grid(alpha = seq(0, 1, length =
+                                                        21),
+                                          lambda = exp(seq(1, -5, length=200))),
                    trControl = ctrl)
 
 enet.fit$bestTune
@@ -313,7 +367,6 @@ gam.fit$bestTune
 
 gam.fit$finalModel
 plot(gam.fit$finalModel)
-
 ```
 
 ## MARS
@@ -347,17 +400,6 @@ pred.mars <- predict(mars.fit, newdata = testing_data)
 test.error.mars <- mean((pred.mars - y2)^2)
 ```
 
-## Linear Model
-```{r}
-set.seed(2)
-
-# fit a linear model
-lm.fit <- train(x, y, 
-                method = "lm",
-                trControl = ctrl)
-
-summary(lm.fit)
-```
 
 # Model Comparison
 ```{r}
