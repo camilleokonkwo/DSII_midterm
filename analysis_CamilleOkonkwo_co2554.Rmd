@@ -176,25 +176,23 @@ boxplot_recovery =
                width = 0.3, coef = outlier_coeff/2) +
   geom_vline(xintercept = c(outlier_low, outlier_high),
              color = "red",linetype = "dashed", size = .5) +
-  labs(title = "Distribution of Recovery Time Study Group",
-       x = "Study Group", y = "Recovery Time") +
+  labs(title = "Distribution of Days to Recovery post COVID-19 Infection by Study Group",
+       x = "Recovery Time (days)", y = "Study Group") +
   theme_minimal() +
   scale_x_continuous(
     breaks = seq(0, 400, by = 20),  
     labels = seq(0, 400, by = 20)   
   )
 
-print(boxplot_recovery)
-
 # recovery_time histogram
 histogram_recovery =
   dat |> 
   ggplot(aes(x = recovery_time)) +
-  geom_histogram(bins = 150, fill = "skyblue", color = "skyblue") +
+  geom_histogram(bins = 150, fill = "skyblue", color = "blue") +
   geom_vline(xintercept = c(outlier_low, outlier_high),
              color = "red", linetype = "dashed", size = .5) +
-  labs(title = "Distribution of Days to Recovery post COVID-19 Infection with Outliers Highlighted",
-       x = "Recovery Time", y = "Frequency") +
+  labs(title = "Distribution of Days to Recovery post COVID-19 Infection",
+       x = "Recovery Time (days)", y = "Frequency") +
   theme_minimal() +
   scale_x_continuous(
     breaks = seq(0, 400, by = 20),  
@@ -204,7 +202,7 @@ histogram_recovery =
 print(histogram_recovery)
 
 combined_recovery =
-  plot_grid(histogram_recovery, boxplot_recovery, labels = c("Histogram", "Boxplot"), ncol = 1)
+  plot_grid(histogram_recovery, boxplot_recovery, ncol = 1)
 
 # Show the combined plot
 print(combined_recovery)
@@ -354,7 +352,7 @@ coef(lasso.fit$finalModel, lasso.fit$bestTune$lambda)
 ```
 
 ## Elastic Net
-```{r}
+```{r fig.height=4}
 set.seed(2)
 
 # elastic net using caret
@@ -473,7 +471,7 @@ parallelplot(resamp, metric = "RMSE")
 bwplot(resamp, metric = "RMSE")
 ```
 
-MARS has lowest mean and median RMSE -> model I pick
+GAM has lowest mean and median RMSE -> model I pick
 
 # Test Data
 ```{r}
