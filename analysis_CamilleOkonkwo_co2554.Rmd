@@ -144,7 +144,7 @@ units(dat_ds$`Time from COVID-19 infection to recovery`) <- "days"
 descriptive_table <- table1(~ Age + Gender + `Race/Ethnicity` + `Smoking status` + Height + Weight + `Body Mass Index` + Hypertension + Diabetes + `Systolic Blood Pressure` + `Low-density lipoprotein cholesterol` + `Vaccination status at the time of infection` + `Severity of COVID-19 infection` + `Time from COVID-19 infection to recovery` | Study,
                             data = dat_ds,
                             overall = "Total",
-                            caption = "Descriptive Statistics")
+                            caption = "Descriptive Characteristics of Participants, Stratified by Source Study")
 
 ds = t1kable(descriptive_table)
 ds
@@ -202,7 +202,7 @@ combined_recovery =
 print(combined_recovery)
 ```
 
-Using a cut-off based on the standard deviation ± 2 times the mean, there are a total 92 outliers (approximately 3% of the observations). These outliers will be excluded from future analysis. Specifically, among the outliers, 84 belong to the study group B population.
+Using a cut-off based on the standard deviation ± 1.5 times the mean, these outliers will be excluded from future analysis. This cutoff was used to keep the distributions of study groups A & B similar.
 
 ```{r}
 # removing recovery_time outliers
@@ -230,7 +230,6 @@ univar_summary <- bind_rows(univar_linear)
 
 knitr::kable(univar_summary) 
 ```
-
 `race`, `diabetes`, and `LDL` appear to be insignificant predictors of `recovery_time` according to the univariate linear analysis.
 
 ## Feature Plot
@@ -252,7 +251,7 @@ featurePlot(
   layout = c(3, 3))
 ```
 
-From the feature plot of the continuous variables, there appears to be no strong linear correlations with our response variable `recovery_time`. `bmi` and `weight` however show a potential non-linear relationship. A GAM or MARS model may be best (**Do we want to do a transformation?**)
+From the feature plot of the continuous variables, there appears to be no strong linear correlations with our response variable `recovery_time`. `bmi` and `weight` however show a potential non-linear relationship. A GAM or MARS model may be best.
 
 ## Correlation Matrix
 ```{r}
@@ -316,7 +315,7 @@ knn.fit <- train(x, y,
 ggplot(knn.fit, highlight = TRUE) + theme_bw()
 ```
 
-## Ridge Regression
+## Ridge
 ```{r}
 # ridge using `caret`
 set.seed(1234)
@@ -358,6 +357,11 @@ lasso.fit$bestTune
 
 # coefficients in the final model
 coef(lasso.fit$finalModel, lasso.fit$bestTune$lambda)
+
+lasso.pred <- predict(lasso.fit, newdata = model.matrix(recovery_time ~ ., testing_data)[,-1])
+
+# test error
+mean((lasso.pred - testing_data[, "recovery_time"])^2)
 ```
 
 ## Elastic Net
@@ -381,6 +385,11 @@ plot(enet.fit, par.settings = myPar)
 
 # coefficients in the final model
 coef(enet.fit$finalModel, enet.fit$bestTune$lambda)
+
+enet.pred <- predict(enet.fit, newdata = model.matrix(recovery_time ~ ., testing_data)[,-1])
+
+# test error
+mean((enet.pred - testing_data[, "recovery_time"])^2)
 ```
 
 ## PCR
@@ -394,11 +403,12 @@ pcr.fit <- train(x, y,
                  trControl = ctrl,
                  preProcess = c("center", "scale"))
 
-predy2.pcr2 <- predict(pcr.fit, newdata = x2) 
-
-mean((y2 - predy2.pcr2)^2)
-
 ggplot(pcr.fit, highlight = TRUE) + theme_bw()
+
+pcr.pred <- predict(pcr.fit, newdata = model.matrix(recovery_time ~ ., testing_data)[,-1])
+
+# test error
+mean((pcr.pred - testing_data[, "recovery_time"])^2)
 ```
 
 ## PLS
@@ -412,11 +422,12 @@ pls.fit <- train(x, y,
                  trControl = ctrl,
                  preProcess = c("center", "scale"))
 
-predy2.pls2 <- predict(pls.fit, newdata = x2) 
-
-mean((y2 - predy2.pls2)^2)
-
 ggplot(pls.fit, highlight = TRUE) + theme_bw()
+
+pls.pred <- predict(pls.fit, newdata = model.matrix(recovery_time ~ ., testing_data)[,-1])
+
+# test error
+mean((pls.pred - testing_data[, "recovery_time"])^2)
 ```
 
 ## GAM
@@ -435,6 +446,11 @@ gam.fit$finalModel
 
 coef(gam.fit$finalModel)
 plot(gam.fit$finalModel)
+
+gam.pred <- predict(gam.fit, newdata = model.matrix(recovery_time ~ ., testing_data)[,-1])
+
+# test error
+mean((gam.pred - testing_data[, "recovery_time"])^2)
 ```
 
 ## MARS
@@ -464,10 +480,10 @@ plot(mars.fit$finalModel)
 summary(mars.fit)
 coef(mars.fit$finalModel)
 
-# test error
-pred.mars <- predict(mars.fit, newdata = testing_data)
+mars.pred <- predict(pls.fit, newdata = model.matrix(recovery_time ~ ., testing_data)[,-1])
 
-test.error.mars <- mean((pred.mars - y2)^2)
+# test error
+mean((mars.pred - testing_data[, "recovery_time"])^2)
 ```
 
 # Model Comparison
@@ -482,6 +498,22 @@ parallelplot(resamp, metric = "RMSE")
 bwplot(resamp, metric = "RMSE")
 ```
 
-MARS has lowest mean and median RMSE -> model I pick. GAM is a good choice since it incorporates non-linear terms by adding the smoothing function, as well as linear terms. GAM also performs model selection for us. 
+MARS has lowest mean and median RMSE -> model I pick. GAM is also a good choice since it incorporates non-linear terms by adding the smoothing function, as well as linear terms. GAM also performs model selection for us. We will compare the performance of GAM and MARS on the testing data to determine which model is best. 
 
+# Testing Data Analysis
+```{r}
+# MARS Prediction
+mars.pred = predict(mars.fit, newdata = model.matrix(recovery_time ~ .,testing_data)[,-1])
+
+# MARS test error
+mean((mars.pred - testing_data[, "recovery_time"])^2)
+
+# GAM Prediction
+gam.pred = predict(gam.fit, newdata = model.matrix(recovery_time ~ .,testing_data)[,-1])
+
+# GAM test error
+mean((gam.pred - testing_data[, "recovery_time"])^2)
+```
+
+Based on the testing data, we should actually go with the GAM model over the MARS since the test error is lower. 
 
