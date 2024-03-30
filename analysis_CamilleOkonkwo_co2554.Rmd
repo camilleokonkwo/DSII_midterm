@@ -159,13 +159,9 @@ mean_value = mean(dat$recovery_time)
 sd_value = sd(dat$recovery_time)
 
 # Define upper and lower bounds
-outlier_coeff = 2
+outlier_coeff = 1.5
 outlier_high = mean_value + outlier_coeff * sd_value
 outlier_low = mean_value - outlier_coeff * sd_value
-
-recovery_outlier = 
-  dat |> 
-  filter(recovery_time >= outlier_low & recovery_time <= outlier_high)
 
 # recovery_time boxplot
 boxplot_recovery =
@@ -212,11 +208,30 @@ Using a cut-off based on the standard deviation ± 2 times the mean, there are a
 # removing recovery_time outliers
 dat2 = 
   dat |> 
-  filter(recovery_time >= outlier_low & recovery_time <= outlier_high)
+  filter(recovery_time > outlier_low & recovery_time < outlier_high)
 
 x.dat2 = model.matrix(recovery_time ~., dat2)[, -1]
 y.dat2 = dat2$recovery_time
 ```
+
+# Univariate Analysis of Predictors
+```{r}
+predictor_variables <- c("age", "gender", "race", "smoking", "height", "weight", "bmi", "hypertension", "diabetes", "SBP", "LDL", "vaccine", "severity", "study")
+
+univar_linear <- lapply(predictor_variables, function(var) {
+  formula <- as.formula(paste("recovery_time ~ ", var))
+  model <- lm(formula, data = dat2)
+    tidy(model) |> 
+      filter(term != "(Intercept)") |> 
+      mutate(p.value.sig = ifelse(p.value < 0.05, "*", ""))
+})
+
+univar_summary <- bind_rows(univar_linear)
+
+knitr::kable(univar_summary) 
+```
+
+`race`, `diabetes`, and `LDL` appear to be insignificant predictors of `recovery_time` according to the univariate linear analysis.
 
 ## Feature Plot
 ```{r fig.height=4}
@@ -252,7 +267,7 @@ The correlation matrix between predictors indicates multicollinearity between `b
 
 ## Test and Train Data Preparation
 ```{r}
-set.seed(2)
+set.seed(1234)
 
 # create a random split of 80% training and 20% test data
 data_split <- initial_split(data = dat2, prop = 0.8)
@@ -278,7 +293,7 @@ ctrl <- trainControl(method = "cv",
 
 ## Linear Model
 ```{r}
-set.seed(2)
+set.seed(1234)
 
 # fit a linear model
 lm.fit <- train(x, y, 
@@ -291,7 +306,7 @@ summary(lm.fit)
 ## KNN
 ```{r}
 # knn using `caret`
-set.seed(2)
+set.seed(1234)
 
 knn.fit <- train(x, y,
                  method = "knn",
@@ -304,7 +319,7 @@ ggplot(knn.fit, highlight = TRUE) + theme_bw()
 ## Ridge Regression
 ```{r}
 # ridge using `caret`
-set.seed(2)
+set.seed(1234)
 
 ridge.fit <- train(x, y,
                    method = "glmnet",
@@ -328,7 +343,7 @@ mean((ridge.pred - testing_data[, "recovery_time"])^2)
 
 ## Lasso
 ```{r}
-set.seed(2)
+set.seed(1234)
 
 # lasso using caret
 lasso.fit <- train(x, y,
@@ -347,7 +362,7 @@ coef(lasso.fit$finalModel, lasso.fit$bestTune$lambda)
 
 ## Elastic Net
 ```{r fig.height=4}
-set.seed(2)
+set.seed(1234)
 
 # elastic net using caret
 enet.fit <- train(x, y,
@@ -370,12 +385,12 @@ coef(enet.fit$finalModel, enet.fit$bestTune$lambda)
 
 ## PCR
 ```{r}
-set.seed(2)
+set.seed(1234)
 
 # pcr using caret
 pcr.fit <- train(x, y,
                  method = "pcr",
-                 tuneGrid = data.frame(ncomp = 1:18),
+                 tuneGrid = data.frame(ncomp = 1:17),
                  trControl = ctrl,
                  preProcess = c("center", "scale"))
 
@@ -388,12 +403,12 @@ ggplot(pcr.fit, highlight = TRUE) + theme_bw()
 
 ## PLS
 ```{r}
-set.seed(2)
+set.seed(1234)
 
 # pls using caret
 pls.fit <- train(x, y,
                  method = "pls",
-                 tuneGrid = data.frame(ncomp = 1:18),
+                 tuneGrid = data.frame(ncomp = 1:17),
                  trControl = ctrl,
                  preProcess = c("center", "scale"))
 
@@ -406,7 +421,7 @@ ggplot(pls.fit, highlight = TRUE) + theme_bw()
 
 ## GAM
 ```{r}
-set.seed(2)
+set.seed(1234)
 
 gam.fit <- train(x, y,
                   method = "gam",
@@ -427,7 +442,7 @@ plot(gam.fit$finalModel)
 # set grid
 mars_grid <- expand.grid(degree = 1:4, nprune = 1:20)
 
-set.seed(2)
+set.seed(1234)
 
 # fit a MARS model
 mars.fit <- train(x, y,
@@ -442,6 +457,8 @@ mars.fit$bestTune
 
 # regression function
 mars.fit$finalModel
+
+plot(mars.fit$finalModel)
 
 # report the regression function
 summary(mars.fit)
@@ -465,10 +482,6 @@ parallelplot(resamp, metric = "RMSE")
 bwplot(resamp, metric = "RMSE")
 ```
 
-GAM has lowest mean and median RMSE -> model I pick. GAM is a good choice since it incorporates non-linear terms by adding the smoothing function, as well as linear terms. GAM also performs model selection for us. 
+MARS has lowest mean and median RMSE -> model I pick. GAM is a good choice since it incorporates non-linear terms by adding the smoothing function, as well as linear terms. GAM also performs model selection for us. 
 
-# Test Data Simulation
-```{r}
-
-```
 
