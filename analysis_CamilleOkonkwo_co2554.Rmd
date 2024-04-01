@@ -214,6 +214,64 @@ x.dat2 = model.matrix(recovery_time ~., dat2)[, -1]
 y.dat2 = dat2$recovery_time
 ```
 
+```{r echo = FALSE, message = FALSE, warning = FALSE}
+dat_ds2 <- dat2 |> 
+  mutate(across(.fns = as.factor)) |>
+  rename_with(~str_to_title(.x), everything()) |> 
+  mutate(
+    Age = as.numeric(Age),
+    Gender = factor(Gender,
+                    levels = c(0, 1),
+                    labels = c("Female", "Male")),
+    `Race/Ethnicity` = factor(Race,
+                              levels = c(1, 2, 3, 4),
+                              labels = c("White", "Asian", "Black", "Hispanic")),
+    `Smoking status` = factor(Smoking,
+                              levels = c(0, 1, 2),
+                              labels = c("Never smoked", "Former smoker",
+                                         "Current smoker")),
+    Height = as.numeric(Height),
+    Weight = as.numeric(Weight),
+    `Body Mass Index` = as.numeric(Bmi),
+    Hypertension = factor(Hypertension,
+                          levels = c(0, 1),
+                          labels = c("No", "Yes")),
+    Diabetes = factor(Diabetes,
+                      levels = c(0, 1),
+                      labels = c("No", "Yes")),
+    `Systolic Blood Pressure` = as.numeric(Sbp),
+    `Low-density lipoprotein cholesterol` = as.numeric(Ldl),
+    `Vaccination status at the time of infection` = factor(Vaccine,
+                                                           levels = c(0, 1),
+                                                           labels = c("Not vaccinated",
+                                                                      "Vaccinated")),
+    `Severity of COVID-19 infection` = factor(Severity,
+                                              levels = c(0, 1),
+                                              labels = c("Not severe", "Severe")),
+    `Time from COVID-19 infection to recovery` = as.numeric(Recovery_time),
+    Study = factor(Study,
+                   levels = c("A", "B"),
+                   labels = c("Study A", "Study B"))
+    )
+```
+
+```{r}
+units(dat_ds2$Height) <- "cm"
+units(dat_ds2$Weight) <- "kg"
+units(dat_ds2$`Body Mass Index`) <- "kg/m^2"
+units(dat_ds2$`Systolic Blood Pressure`) <- "mm/Hg"
+units(dat_ds2$`Low-density lipoprotein cholesterol`) <- "mg/dL"
+units(dat_ds2$`Time from COVID-19 infection to recovery`) <- "days"
+
+descriptive_table <- table1(~ Age + Gender + `Race/Ethnicity` + `Smoking status` + Height + Weight + `Body Mass Index` + Hypertension + Diabetes + `Systolic Blood Pressure` + `Low-density lipoprotein cholesterol` + `Vaccination status at the time of infection` + `Severity of COVID-19 infection` + `Time from COVID-19 infection to recovery` | Study,
+                            data = dat_ds2,
+                            overall = "Total",
+                            caption = "Descriptive Characteristics of Participants, Stratified by Source Study, Excluding Outliers")
+
+ds2 = t1kable(descriptive_table)
+ds2
+```
+
 # Univariate Analysis of Predictors
 ```{r}
 predictor_variables <- c("age", "gender", "race", "smoking", "height", "weight", "bmi", "hypertension", "diabetes", "SBP", "LDL", "vaccine", "severity", "study")
